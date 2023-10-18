@@ -66,7 +66,15 @@ class MoleculeDatapoint:
             self.features = np.where(np.isnan(self.features), replace_token, self.features)
 
         # Create targets
-        self.targets = [float(x) if x != '' else None for x in line[1:]]
+        # self.targets = [float(x) if x != '' else None for x in line[1:]]
+        
+        # CHECK THIS!
+        self.targets = [np.int8(x) if x != '' else None for x in line[1:]]
+
+        # CHECK THIS!
+        # smiles 
+        self.mol = Chem.MolToSmiles(self.mol)
+        # del self.mol
 
     def set_features(self, features: np.ndarray):
         """

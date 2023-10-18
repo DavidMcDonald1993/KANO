@@ -12,7 +12,7 @@ from tqdm import trange
 from torch.utils.data import DataLoader
 from chemprop.data import MoleculeDataset
 from chemprop.nn_utils import compute_gnorm, compute_pnorm, NoamLR
-import pdb
+import pdb, gc
 
 def train(model: nn.Module,
           prompt: bool,
@@ -74,7 +74,8 @@ def train(model: nn.Module,
         preds = model(step, prompt, batch, features_batch)
         if args.dataset_type == 'multiclass':
             targets = targets.long()
-            loss = torch.cat([loss_func(preds[:, target_index, :], targets[:, target_index]).unsqueeze(1) for target_index in range(preds.size(1))], dim=1) * class_weights * mask
+            loss = torch.cat([loss_func(preds[:, target_index, :], targets[:, target_index]).unsqueeze(1) 
+                              for target_index in range(preds.size(1))], dim=1) * class_weights * mask
         else:
             loss = loss_func(preds, targets) * class_weights * mask
         loss = loss.sum() / mask.sum()

@@ -63,14 +63,19 @@ class CMPNEncoder(nn.Module):
     def forward(self, step, mol_graph, features_batch=None) -> torch.FloatTensor:
 
         f_atoms, f_bonds, a2b, b2a, b2revb, a_scope, atom_num, fg_num, f_fgs, fg_scope = mol_graph.get_components()
-        if self.args.cuda or next(self.parameters()).is_cuda:
+
+        # added
+        use_cuda = self.args.cuda or next(self.parameters()).is_cuda
+        if use_cuda:
             f_atoms, f_bonds, a2b, b2a, b2revb, f_fgs = (
                     f_atoms.cuda(), f_bonds.cuda(), 
                     a2b.cuda(), b2a.cuda(), b2revb.cuda(), f_fgs.cuda())
         
         fg_index = [i*13 for i in range(mol_graph.n_mols)]
         fg_indxs = [[i]*133 for i in fg_index]
-        fg_indxs = torch.LongTensor(fg_indxs).cuda()
+        fg_indxs = torch.LongTensor(fg_indxs)
+        if use_cuda:
+            fg_indxs = fg_indxs.cuda()
 
         if self.args.step == 'functional_prompt':
             # make sure the prompt exists
@@ -84,9 +89,16 @@ class CMPNEncoder(nn.Module):
                 f_fgs.scatter_(0, fg_indxs[i:i+1], self.cls)
             
             target_index = [val for val in range(mol_graph.n_mols) for i in range(13)]
-            target_index = torch.LongTensor(target_index).cuda()
+            target_index = torch.LongTensor(target_index)
+            if use_cuda:
+                target_index = target_index.cuda()
+
             fg_hiddens = scatter_add(f_fgs, target_index, 0)
-            fg_hiddens_atom = torch.repeat_interleave(fg_hiddens, torch.tensor(atom_num).cuda(), dim=0)
+            atom_num_tensor = torch.tensor(atom_num)
+            if use_cuda:
+                atom_num_tensor = atom_num_tensor.cuda()
+
+            fg_hiddens_atom = torch.repeat_interleave(fg_hiddens, atom_num_tensor, dim=0)
             fg_out = torch.zeros(1, 133).cuda()
             fg_out = torch.cat((fg_out, fg_hiddens_atom), 0)
             f_atoms += fg_out
@@ -98,10 +110,18 @@ class CMPNEncoder(nn.Module):
                 f_fgs.scatter_(0, fg_indxs[i:i+1], self.cls)
             
             target_index = [val for val in range(mol_graph.n_mols) for i in range(13)]
-            target_index = torch.LongTensor(target_index).cuda()
+            target_index = torch.LongTensor(target_index)
+            if use_cuda:
+                target_index = target_index.cuda()
             fg_hiddens = scatter_add(f_fgs, target_index, 0)
-            fg_hiddens_atom = torch.repeat_interleave(fg_hiddens, torch.tensor(atom_num).cuda(), dim=0)
-            fg_out = torch.zeros(1, 133).cuda()
+            atom_num_tensor = torch.tensor(atom_num)
+            if use_cuda:
+                atom_num_tensor = atom_num_tensor.cuda()
+            fg_hiddens_atom = torch.repeat_interleave(fg_hiddens, atom_num_tensor, dim=0)
+            fg_out = torch.zeros(1, 133)
+            if use_cuda:
+                fg_out = fg_out.cuda()
+                
             fg_out = torch.cat((fg_out, fg_hiddens_atom), 0)
             f_atoms = torch.cat((fg_out, f_atoms), 1)
             # Input

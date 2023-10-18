@@ -64,7 +64,9 @@ def save_checkpoint(path: str,
 def load_checkpoint(path: str,
                     current_args: Namespace = None,
                     cuda: bool = None,
-                    logger: logging.Logger = None) -> MoleculeModel:
+                    logger: logging.Logger = None,
+                    return_args: bool = False, # added, a bit hacky...
+                    ) -> MoleculeModel:
     """
     Loads a model checkpoint.
 
@@ -77,7 +79,13 @@ def load_checkpoint(path: str,
     debug = logger.debug if logger is not None else print
 
     # Load model and args
-    state = torch.load(path, map_location=lambda storage, loc: storage)
+    # state = torch.load(path, map_location=lambda storage, loc: storage)
+    if cuda:
+        device = torch.device("cuda:0")
+    else:
+        device = torch.device("cpu")
+    state = torch.load(path, map_location=device)
+
     args, loaded_state_dict = state['args'], state['state_dict']
 
     if current_args is not None:
@@ -104,7 +112,7 @@ def load_checkpoint(path: str,
                   f'model parameter of shape {model_state_dict[param_name].shape}.')
         else:
             # debug(f'Loading pretrained parameter "{param_name}".')
-            pretrained_state_dict[param_name] = loaded_state_dict[param_name]
+            pretrained_state_dict[param_name] = loaded_state_dict[param_name].to(device)
 
     # Load pretrained weights
     model_state_dict.update(pretrained_state_dict)
@@ -113,6 +121,12 @@ def load_checkpoint(path: str,
     if cuda:
         debug('Moving model to cuda')
         model = model.cuda()
+    else:
+        debug("Moving model to CPU")
+        model = model.cpu()
+
+    if return_args:
+        return model, args
 
     return model
 

@@ -109,8 +109,8 @@ def get_data(path: str,
         features_path = features_path if features_path is not None else args.features_path
         max_data_size = max_data_size if max_data_size is not None else args.max_data_size
         use_compound_names = use_compound_names if use_compound_names is not None else args.use_compound_names
-    else:
-        use_compound_names = False
+    # else:
+    #     use_compound_names = False
 
     max_data_size = max_data_size or float('inf')
 
@@ -152,7 +152,7 @@ def get_data(path: str,
         ])
 
     # Filter out invalid SMILES
-    if skip_invalid_smiles:
+    if False and skip_invalid_smiles:
         original_data_len = len(data)
         data = filter_invalid_smiles(data)
 

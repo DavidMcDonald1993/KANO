@@ -57,8 +57,7 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
     args.num_tasks = data.num_tasks()
     args.features_size = data.features_size()
     info(f'Number of tasks = {args.num_tasks}')
-    
-    
+
     # Split data
     debug(f'Splitting data with seed {args.seed}')
     if args.separate_test_path:

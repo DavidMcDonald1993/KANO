@@ -73,10 +73,16 @@ class MPNEncoder(nn.Module):
         """
 
         f_atoms, f_bonds, a2b, b2a, b2revb, a_scope, b_scope, _ = mol_graph.get_components()
-        f_atoms, f_bonds, a2b, b2a, b2revb = f_atoms.cuda(), f_bonds.cuda(), a2b.cuda(), b2a.cuda(), b2revb.cuda()
+
+        use_cuda = next(self.parameters()).is_cuda
+
+        if use_cuda:
+            f_atoms, f_bonds, a2b, b2a, b2revb = f_atoms.cuda(), f_bonds.cuda(), a2b.cuda(), b2a.cuda(), b2revb.cuda()
 
         if self.atom_messages:
-            a2a = mol_graph.get_a2a().cuda()
+            a2a = mol_graph.get_a2a()
+            if use_cuda:
+                a2a = a2a.cuda()
 
         # Input
         if self.atom_messages:

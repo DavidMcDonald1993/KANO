@@ -211,10 +211,17 @@ class Prompt_generator(nn.Module):
         
         hidden_states = self.attention_layer_1(fg_states, fg_states)
         hidden_states = self.attention_layer_2(hidden_states, fg_states)
-        fg_out = torch.zeros(1, self.hidden_size).cuda()
+
+        use_cuda = next(self.parameters()).is_cuda
+        fg_out = torch.zeros(1, self.hidden_size)
+        if use_cuda:
+            fg_out = fg_out.cuda()
         cls_hiddens = torch.gather(hidden_states, 0, fg_indexs)
         cls_hiddens = self.linear(cls_hiddens)
-        fg_hiddens = torch.repeat_interleave(cls_hiddens, torch.tensor(atom_num).cuda(), dim=0)
+        atom_num_tensor = torch.tensor(atom_num)
+        if use_cuda:
+            atom_num_tensor = atom_num_tensor.cuda()
+        fg_hiddens = torch.repeat_interleave(cls_hiddens, atom_num_tensor, dim=0)
         fg_out = torch.cat((fg_out, fg_hiddens), 0)
 
         fg_out = self.norm(fg_out)
