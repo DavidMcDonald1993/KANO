@@ -1,0 +1,5 @@
+/data/chembl*
+/data/single_protein_targets
+/predictions
+
+/*.csv

@@ -29,6 +29,7 @@ def generate_scaffold(mol: Union[str, Chem.Mol], include_chirality: bool = False
     scaffold = MurckoScaffold.MurckoScaffoldSmiles(mol=mol, includeChirality=include_chirality)
     return scaffold
 
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 def scaffold_to_smiles(mols: Union[List[str], List[Chem.Mol]],
                        use_indices: bool = False) -> Dict[str, Union[Set[str], Set[int]]]:
@@ -40,13 +41,48 @@ def scaffold_to_smiles(mols: Union[List[str], List[Chem.Mol]],
     to the smiles string itself. This is necessary if there are duplicate smiles.
     :return: A dictionary mapping each unique scaffold to all smiles (or smiles indices) which have that scaffold.
     """
+
+    n_mols = len(mols)
+    print ("Computing scaffolds for", n_mols, "molecule(s)")
     scaffolds = defaultdict(set)
-    for i, mol in tqdm(enumerate(mols), total=len(mols)):
+
+    # n_proc = 5
+    # print ("Using", n_proc, "process(es)")
+
+    # with tqdm(total=n_mols) as pbar:
+
+    #     with ProcessPoolExecutor(max_workers=n_proc) as p:
+
+    #         tasks = {}
+
+    #         for i, mol in enumerate(mols):
+
+    #             task = p.submit(
+    #                 generate_scaffold,
+    #                 mol,
+    #             )
+    #             tasks[task] = (i, mol)
+
+    #         for task in as_completed(tasks):
+                
+    #             i, mol = tasks[task]
+    #             scaffold = task.result()
+    #             del tasks[task]
+
+    #             if use_indices:
+    #                 scaffolds[scaffold].add(i)
+    #             else:
+    #                 scaffolds[scaffold].add(mol)
+                
+    #             pbar.update(1)
+
+    for i, mol in tqdm(enumerate(mols), total=n_mols):
         scaffold = generate_scaffold(mol)
         if use_indices:
             scaffolds[scaffold].add(i)
         else:
             scaffolds[scaffold].add(mol)
+
     return scaffolds
 
 
@@ -75,7 +111,7 @@ def scaffold_split(data: MoleculeDataset,
     train, val, test = [], [], []
     train_scaffold_count, val_scaffold_count, test_scaffold_count = 0, 0, 0
 
-    # Map from scaffold to index in the data
+    # Map from scaffold to index (set) in the data
     scaffold_to_indices = scaffold_to_smiles(data.mols(), use_indices=True)
 
     if balanced:  # Put stuff that's bigger than half the val/test size into train, rest just order randomly
@@ -91,34 +127,55 @@ def scaffold_split(data: MoleculeDataset,
         random.shuffle(big_index_sets)
         random.shuffle(small_index_sets)
         index_sets = big_index_sets + small_index_sets
-    else:  # Sort from largest to smallest scaffold sets
+    else:  
+        # Sort from largest to smallest scaffold sets
         index_sets = sorted(list(scaffold_to_indices.values()),
                             key=lambda index_set: len(index_set),
                             reverse=True)
 
     for index_set in index_sets:
         if len(train) + len(index_set) <= train_size:
-            train += index_set
+            # train += index_set
             train_scaffold_count += 1
+            set_to_add_index_set = train
+     
         elif len(val) + len(index_set) <= val_size:
-            val += index_set
+            # val += index_set
             val_scaffold_count += 1
-        else:
-            test += index_set
-            test_scaffold_count += 1
+            set_to_add_index_set = val
 
-    if logger is not None:
-        logger.debug(f'Total scaffolds = {len(scaffold_to_indices):,} | '
-                     f'train scaffolds = {train_scaffold_count:,} | '
-                     f'val scaffolds = {val_scaffold_count:,} | '
-                     f'test scaffolds = {test_scaffold_count:,}')
+        else:
+            # test += index_set
+            test_scaffold_count += 1
+            set_to_add_index_set = test
+
+        for i in index_set:
+            # set_to_add_index_set.append(i)
+            set_to_add_index_set.append(data[i])
+            data[i] = None
+       
+        # add set as element
+        # set_to_add_index_set.append(index_set)
+
+    # if logger is not None:
+    #     logger.debug(f'Total scaffolds = {len(scaffold_to_indices):,} | '
+    #                  f'train scaffolds = {train_scaffold_count:,} | '
+    #                  f'val scaffolds = {val_scaffold_count:,} | '
+    #                  f'test scaffolds = {test_scaffold_count:,}')
     
-    log_scaffold_stats(data, index_sets, logger=logger)
+    # log_scaffold_stats(data, index_sets, logger=logger)
+    
+    # raise Exception
 
     # Map from indices to data
-    train = [data[i] for i in train]
-    val = [data[i] for i in val]
-    test = [data[i] for i in test]
+    # print ("Mapping indexes back to data")
+    # train = [data[i] for i in train]
+    # val = [data[i] for i in val]
+    # test = [data[i] for i in test]
+
+    # train = [data[j] for i in train for j in i]
+    # val = [data[j] for i in val for j in i]
+    # test = [data[j] for i in test for j in i]
 
     return MoleculeDataset(train), MoleculeDataset(val), MoleculeDataset(test)
 

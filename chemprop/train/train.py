@@ -111,4 +111,5 @@ def train(model: nn.Module,
                 for i, lr in enumerate(lrs):
                     writer.add_scalar(f'learning_rate_{i}', lr, n_iter)
 
+    
     return n_iter

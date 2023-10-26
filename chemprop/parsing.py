@@ -82,6 +82,11 @@ def add_train_args(parser: ArgumentParser):
                              '(walks directory and ensembles all models that are found)')
     parser.add_argument('--checkpoint_path', type=str, default=None,
                         help='Path to model checkpoint (.pt file)')
+    # added:
+    parser.add_argument('--finetune_path', type=str, default=None,
+                        help='Path to fine-tuned model checkpoint (.pt file)')
+    parser.add_argument("--transpose_evaluation_matrix", action="store_true") # transpose evaluation
+    
     parser.add_argument('--dataset_type', type=str,
                         choices=['classification', 'regression', 'multiclass'],
                         help='Type of dataset, e.g. classification or regression.'

@@ -239,7 +239,6 @@ def accuracy(targets: List[int], preds: List[float], threshold: float = 0.5) -> 
         hard_preds = [1 if p > threshold else 0 for p in preds] # binary prediction
     return accuracy_score(targets, hard_preds)
 
-
 def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], List[float]], float]:
     """
     Gets the metric function corresponding to a given metric name.

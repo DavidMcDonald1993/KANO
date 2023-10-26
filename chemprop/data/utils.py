@@ -81,6 +81,35 @@ def filter_invalid_smiles(data: MoleculeDataset) -> MoleculeDataset:
                             and datapoint.mol.GetNumHeavyAtoms() > 0])
 
 
+# line generator
+def read_data_file(
+    path: str,
+    max_data_size: int,
+    skip_smiles: set,
+    ):
+
+    with open(path) as f:
+        reader = csv.reader(f)
+        next(reader)  # skip header
+
+        # lines = []
+        for i, line in enumerate(reader, start=0):
+
+            if i >= max_data_size:
+                break 
+
+            smiles = line[0]
+
+            if smiles in skip_smiles:
+                continue
+            
+            yield line
+
+            # lines.append(line)
+
+            # if len(lines) >= max_data_size:
+            #     break
+
 def get_data(path: str,
              skip_invalid_smiles: bool = True,
              args: Namespace = None,
@@ -126,30 +155,39 @@ def get_data(path: str,
     skip_smiles = set()
 
     # Load data
-    with open(path) as f:
-        reader = csv.reader(f)
-        next(reader)  # skip header
+    # with open(path) as f:
+    #     reader = csv.reader(f)
+    #     next(reader)  # skip header
 
-        lines = []
-        for line in reader:
-            smiles = line[0]
+    #     lines = []
+    #     for line in reader:
+    #         smiles = line[0]
 
-            if smiles in skip_smiles:
-                continue
+    #         if smiles in skip_smiles:
+    #             continue
 
-            lines.append(line)
+    #         lines.append(line)
 
-            if len(lines) >= max_data_size:
-                break
+    #         if len(lines) >= max_data_size:
+    #             break
 
-        data = MoleculeDataset([
-            MoleculeDatapoint(
-                line=line,
-                args=args,
-                features=features_data[i] if features_data is not None else None,
-                use_compound_names=use_compound_names
-            ) for i, line in tqdm(enumerate(lines), total=len(lines))
-        ])
+    lines = read_data_file(
+        path=path,
+        max_data_size=max_data_size,
+        skip_smiles=skip_smiles,
+    )
+
+    # construct dataset from lines
+    data = MoleculeDataset([
+        MoleculeDatapoint(
+            line=line,
+            args=args,
+            features=features_data[i] if features_data is not None else None,
+            use_compound_names=use_compound_names,
+        ) 
+        # for i, line in tqdm(enumerate(lines), total=len(lines))
+        for i, line in tqdm(enumerate(lines), total=max_data_size)
+    ])
 
     # Filter out invalid SMILES
     if False and skip_invalid_smiles:

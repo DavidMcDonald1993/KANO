@@ -48,7 +48,6 @@ class MoleculeDatapoint:
         self.smiles = line[0]  # str
         self.mol = Chem.MolFromSmiles(self.smiles)
         
-
         # Generate additional features if given a generator
         if self.features_generator is not None:
             self.features = []
@@ -69,11 +68,12 @@ class MoleculeDatapoint:
         # self.targets = [float(x) if x != '' else None for x in line[1:]]
         
         # CHECK THIS!
-        self.targets = [np.int8(x) if x != '' else None for x in line[1:]]
+        self.targets = [x=="1" if x != '' else None for x in line[1:]] # bool
+        # self.targets = [np.int8(x) if x != '' else None for x in line[1:]] # int
 
         # CHECK THIS!
         # smiles 
-        self.mol = Chem.MolToSmiles(self.mol)
+        self.mol = self.smiles
         # del self.mol
 
     def set_features(self, features: np.ndarray):
@@ -250,3 +250,6 @@ class MoleculeDataset(Dataset):
         :return: A MoleculeDatapoint if an int is provided or a list of MoleculeDatapoints if a slice is provided.
         """
         return self.data[item]
+
+    def __setitem__(self, i, elem):
+            self.data[i] = elem

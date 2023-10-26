@@ -8,6 +8,9 @@ import os
 from typing import Tuple
 import numpy as np
 
+import torch
+torch.cuda.empty_cache()
+
 from chemprop.train.run_training import run_training
 from chemprop.data.utils import get_task_names
 from chemprop.utils import makedirs

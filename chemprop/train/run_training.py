@@ -27,6 +27,28 @@ from chemprop.torchlight import initialize_exp, snapshot
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
 
+class EarlyStopper:
+    def __init__(self, patience=1, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.min_validation_loss = float('inf')
+
+    def early_stop(self, validation_loss):
+        print ("Checking early stopping")
+        print ("Current validation loss:", validation_loss,)
+        print ("Best:", self.min_validation_loss)
+
+        if validation_loss < self.min_validation_loss:
+            self.min_validation_loss = validation_loss
+            self.counter = 0
+            print ("Resetting counter")
+        elif validation_loss >= (self.min_validation_loss + self.min_delta) or np.isnan(validation_loss) or np.isinf(validation_loss):
+            self.counter += 1
+            print ("Incremented counter", self.counter, "/", self.patience)
+            if self.counter >= self.patience:
+                return True
+        return False
 
 def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[float]:
     """
@@ -58,6 +80,14 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
     args.features_size = data.features_size()
     info(f'Number of tasks = {args.num_tasks}')
 
+    if False and args.dataset_type == 'classification':
+        print ("Computing class sizes")
+        class_sizes = get_class_sizes(data)
+        debug('Class sizes')
+        for i, task_class_sizes in enumerate(class_sizes):
+            debug(f'{args.task_names[i]} '
+                  f'{", ".join(f"{cls}: {size * 100:.2f}%" for cls, size in enumerate(task_class_sizes))}')
+
     # Split data
     debug(f'Splitting data with seed {args.seed}')
     if args.separate_test_path:
@@ -65,22 +95,21 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
     if args.separate_val_path:
         val_data = get_data(path=args.separate_val_path, args=args, features_path=args.separate_val_features_path, logger=logger)
 
+
     if args.separate_val_path and args.separate_test_path:
         train_data = data
     elif args.separate_val_path:
-        train_data, _, test_data = split_data(data=data, split_type=args.split_type, sizes=(0.8, 0.2, 0.0), seed=args.seed, args=args, logger=logger)
+        train_data, _, test_data = split_data(data=data, split_type=args.split_type, sizes=(0.8, 0.0, 0.2), seed=args.seed, args=args, logger=logger)
     elif args.separate_test_path:
         train_data, val_data, _ = split_data(data=data, split_type=args.split_type, sizes=(0.8, 0.2, 0.0), seed=args.seed, args=args, logger=logger)
     else:
-        print('='*100)
+        info('='*100)
+        info(f"Splitting data into ratio {args.split_sizes} using split type {args.split_type}")
         train_data, val_data, test_data = split_data(data=data, split_type=args.split_type, sizes=args.split_sizes, seed=args.seed, args=args, logger=logger)
 
-    if args.dataset_type == 'classification':
-        class_sizes = get_class_sizes(data)
-        debug('Class sizes')
-        for i, task_class_sizes in enumerate(class_sizes):
-            debug(f'{args.task_names[i]} '
-                  f'{", ".join(f"{cls}: {size * 100:.2f}%" for cls, size in enumerate(task_class_sizes))}')
+            
+    total_data = len(data)
+    del data
 
     if args.save_smiles_splits:
         with open(args.data_path, 'r') as f:
@@ -115,6 +144,7 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
             pickle.dump(all_split_indices, f)
 
     if args.features_scaling:
+        info("Normalising input features")
         features_scaler = train_data.normalize_features(replace_nan_token=0)
         val_data.normalize_features(features_scaler)
         test_data.normalize_features(features_scaler)
@@ -123,12 +153,12 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
 
     args.train_data_size = len(train_data)
     
-    debug(f'Total size = {len(data):,} | '
+    debug(f'Total size = {total_data:,} | '
           f'train size = {len(train_data):,} | val size = {len(val_data):,} | test size = {len(test_data):,}')
 
     # Initialize scaler and scale training targets by subtracting mean and dividing standard deviation (regression only)
     if args.dataset_type == 'regression':
-        debug('Fitting scaler')
+        debug('Fitting scaler for regression problem')
         train_smiles, train_targets = train_data.smiles(), train_data.targets()
         scaler = StandardScaler().fit(train_targets)
         scaled_targets = scaler.transform(train_targets).tolist()
@@ -170,6 +200,10 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
         if args.step == 'functional_prompt':
             add_functional_prompt(model, args)
 
+        # load existing fine-tuned model
+        if args.finetune_path is not None:
+            print ("Loading existing fine-tuned model from", args.finetune_path)
+            model = load_checkpoint(args.finetune_path, current_args=args, cuda=args.cuda, logger=logger, )
         
         debug(model)
         debug(f'Number of parameters = {param_count(model):,}')
@@ -185,6 +219,9 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
 
         # Learning rate schedulers
         scheduler = build_lr_scheduler(optimizer, args)
+
+        # early stopper 
+        early_stopper = EarlyStopper(patience=10, min_delta=0)
 
         # Run training
         best_score = float('inf') if args.minimize_score else -float('inf')
@@ -215,7 +252,8 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
                 batch_size=args.batch_size,
                 dataset_type=args.dataset_type,
                 scaler=scaler,
-                logger=logger
+                logger=logger,
+                transpose_evaluation_matrix=args.transpose_evaluation_matrix,
             )
 
             # Average validation score
@@ -236,7 +274,8 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
                 num_tasks=args.num_tasks,
                 metric_func=metric_func,
                 dataset_type=args.dataset_type,
-                logger=logger
+                logger=logger,
+                transpose_evaluation_matrix=args.transpose_evaluation_matrix,
             )
                 
             # Average test score
@@ -255,6 +294,11 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
                 best_score, best_epoch = avg_val_score, epoch
                 save_checkpoint(os.path.join(save_dir, 'model.pt'), model, scaler, features_scaler, args) 
 
+            # early stopping
+            if np.abs(avg_test_score - 1.0) < 1e-8 or early_stopper.early_stop(-avg_val_score): # make smaller is better
+                info(f"Early stopping after {epoch} epoch(s)")
+                break
+
         # Evaluate on test set using model with best validation score
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
         model = load_checkpoint(os.path.join(save_dir, 'model.pt'), cuda=args.cuda, logger=logger)
@@ -272,7 +316,8 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
             num_tasks=args.num_tasks,
             metric_func=metric_func,
             dataset_type=args.dataset_type,
-            logger=logger
+            logger=logger,
+            transpose_evaluation_matrix=args.transpose_evaluation_matrix,
         )
         if len(test_preds) != 0:
             sum_test_preds += np.array(test_preds)
@@ -296,7 +341,8 @@ def run_training(args: Namespace, prompt: bool, logger: Logger = None) -> List[f
         num_tasks=args.num_tasks,
         metric_func=metric_func,
         dataset_type=args.dataset_type,
-        logger=logger
+        logger=logger,
+        transpose_evaluation_matrix=args.transpose_evaluation_matrix
     )
 
     # Average ensemble score

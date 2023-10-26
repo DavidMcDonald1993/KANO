@@ -123,6 +123,8 @@ local.py
 
 # BEGIN
 /data/chembl*
+/data/single_protein_targets
 /dumped
+/predictions
 
 /*.csv
